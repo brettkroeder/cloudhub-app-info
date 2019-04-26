@@ -1,0 +1,226 @@
+{
+  "definitions": {},
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://example.com/root.json",
+  "type": "object",
+  "title": "The Root Schema",
+  "required": [
+    "osKey"
+  ],
+  "properties": {
+    "osKey": {
+      "$id": "#/properties/osKey",
+      "type": "object",
+      "title": "The Oskey Schema",
+      "required": [
+        "organization",
+        "bgTree",
+        "environment",
+        "application",
+        "appLastUpdateTime",
+        "appStatus",
+        "workerCount",
+        "workerSize",
+        "muleVersion",
+        "workerId",
+        "workerIpAddress",
+        "maxCPUPct",
+        "maxMemoryUsedPct",
+        "maxMemoryTotalUsed",
+        "maxMemoryTotalMax",
+        "maxDiskReadBytes",
+        "maxDiskWriteBytes",
+        "maxNetworkIn",
+        "maxNetworkOut"
+      ],
+      "properties": {
+        "organization": {
+          "$id": "#/properties/osKey/properties/organization",
+          "type": "string",
+          "title": "The Organization Schema",
+          "default": "",
+          "examples": [
+            "Retail"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "bgTree": {
+          "$id": "#/properties/osKey/properties/bgTree",
+          "type": "string",
+          "title": "The Bgtree Schema",
+          "default": "",
+          "examples": [
+            "Sales"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "environment": {
+          "$id": "#/properties/osKey/properties/environment",
+          "type": "string",
+          "title": "The Environment Schema",
+          "default": "",
+          "examples": [
+            "Sandbox"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "application": {
+          "$id": "#/properties/osKey/properties/application",
+          "type": "string",
+          "title": "The Application Schema",
+          "default": "",
+          "examples": [
+            "bkr-account-api-sap-get-v5-mock"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "appLastUpdateTime": {
+          "$id": "#/properties/osKey/properties/appLastUpdateTime",
+          "type": "integer",
+          "title": "The Applastupdatetime Schema",
+          "default": 0,
+          "examples": [
+            1551648077133
+          ]
+        },
+        "appStatus": {
+          "$id": "#/properties/osKey/properties/appStatus",
+          "type": "string",
+          "title": "The Appstatus Schema",
+          "default": "",
+          "examples": [
+            "STARTED"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "workerCount": {
+          "$id": "#/properties/osKey/properties/workerCount",
+          "type": "integer",
+          "title": "The Workercount Schema",
+          "default": 0,
+          "examples": [
+            1
+          ]
+        },
+        "workerSize": {
+          "$id": "#/properties/osKey/properties/workerSize",
+          "type": "number",
+          "title": "The Workersize Schema",
+          "default": 0.0,
+          "examples": [
+            0.1
+          ]
+        },
+        "muleVersion": {
+          "$id": "#/properties/osKey/properties/muleVersion",
+          "type": "string",
+          "title": "The Muleversion Schema",
+          "default": "",
+          "examples": [
+            "4.1.5"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "workerId": {
+          "$id": "#/properties/osKey/properties/workerId",
+          "type": "string",
+          "title": "The Workerid Schema",
+          "default": "",
+          "examples": [
+            "i-0cef7c6a521bef57b"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "workerIpAddress": {
+          "$id": "#/properties/osKey/properties/workerIpAddress",
+          "type": "string",
+          "title": "The Workeripaddress Schema",
+          "default": "",
+          "examples": [
+            "54.145.38.118"
+          ],
+          "pattern": "^(.*)$"
+        },
+        "maxCPUPct": {
+          "$id": "#/properties/osKey/properties/maxCPUPct",
+          "type": "number",
+          "title": "The Maxcpupct Schema",
+          "default": 0.0,
+          "examples": [
+            1.4130419462151254
+          ]
+        },
+        "maxMemoryUsedPct": {
+          "$id": "#/properties/osKey/properties/maxMemoryUsedPct",
+          "type": "number",
+          "title": "The Maxmemoryusedpct Schema",
+          "default": 0.0,
+          "examples": [
+            48.42884120676784
+          ]
+        },
+        "maxMemoryTotalUsed": {
+          "$id": "#/properties/osKey/properties/maxMemoryTotalUsed",
+          "type": "number",
+          "title": "The Maxmemorytotalused Schema",
+          "default": 0.0,
+          "examples": [
+            237370935.46666667
+          ]
+        },
+        "maxMemoryTotalMax": {
+          "$id": "#/properties/osKey/properties/maxMemoryTotalMax",
+          "type": "integer",
+          "title": "The Maxmemorytotalmax Schema",
+          "default": 0,
+          "examples": [
+            490143744
+          ]
+        },
+        "maxDiskReadBytes": {
+          "$id": "#/properties/osKey/properties/maxDiskReadBytes",
+          "type": "integer",
+          "title": "The Maxdiskreadbytes Schema",
+          "default": 10,
+          "examples": [
+            10
+          ]
+        },
+        "maxDiskWriteBytes": {
+          "$id": "#/properties/osKey/properties/maxDiskWriteBytes",
+          "type": "integer",
+          "title": "The Maxdiskwritebytes Schema",
+          "default": 0,
+          "examples": [
+            0
+          ]
+        },
+        "maxNetworkIn": {
+          "$id": "#/properties/osKey/properties/maxNetworkIn",
+          "type": "number",
+          "title": "The Maxnetworkin Schema",
+          "default": 0.0,
+          "examples": [
+            23957.733333333334
+          ]
+        },
+        "maxNetworkOut": {
+          "$id": "#/properties/osKey/properties/maxNetworkOut",
+          "type": "number",
+          "title": "The Maxnetworkout Schema",
+          "default": 0.0,
+          "examples": [
+            36246.4
+          ]
+        },
+        "errorDescription": {
+          "$id": "#/properties/osKey/properties/errorDescription",
+          "type": "string",
+          "examples": [
+            "Retail"
+          ]
+        }
+      }
+    }
+  }
+}

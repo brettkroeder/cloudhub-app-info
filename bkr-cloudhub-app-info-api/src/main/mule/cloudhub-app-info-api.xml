@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:core-services-api-reference="http://www.mulesoft.org/schema/mule/core-services-api-reference" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd  http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core-services-api-reference http://www.mulesoft.org/schema/mule/core-services-api-reference/current/mule-core-services-api-reference.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd">
+    <http:listener-config name="cloudhub-app-info-api-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="${https.port}" protocol="HTTPS">
+			<tls:context >
+				<tls:key-store path="${https.tls.path}" keyPassword="${https.tls.keyPassword}" password="${https.tls.password}" />
+			</tls:context>
+		</http:listener-connection>
+    </http:listener-config>
+    <apikit:config name="cloudhub-app-info-api-config" raml="cloudhub-app-info-api.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+    <http:request-config name="AnypointPlatformAPIs" doc:name="HTTP Request configuration" doc:id="896c0b6c-f942-4a74-b2d0-bd1c546bca8a" basePath="/accounts">
+        <http:request-connection protocol="HTTPS" host="anypoint.mulesoft.com" port="443" />
+    </http:request-config>
+    <http:request-config name="CloudHubAPIs" doc:name="HTTP Request configuration" doc:id="142855e4-ceb4-4f61-a62a-0a08802d5367" basePath="/cloudhub/api" responseTimeout="60000">
+        <http:request-connection protocol="HTTPS" host="anypoint.mulesoft.com" port="443" connectionIdleTimeout="60000"/>
+    </http:request-config>
+    <configuration-properties doc:name="Configuration properties" doc:id="c4100394-545d-46e9-9d48-003d42dceaad" file="mule-dev.yaml" />
+	<os:object-store name="lock" doc:name="Object store" doc:id="15536814-ed5f-4c91-abeb-b1da9b11f400" persistent="false" />
+	<flow name="cloudhub-app-info-api-main">
+        <http:listener config-ref="cloudhub-app-info-api-httpListenerConfig" path="/api/*">
+            <http:response statusCode="#[vars.httpStatus default 200]" />
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+            </http:error-response>
+        </http:listener>
+        <apikit:router config-ref="cloudhub-app-info-api-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:BAD_REQUEST" enableNotifications="true" logException="true">
+                <ee:transform xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd" doc:id="d5f2b522-b976-4726-90c2-89f9c602a8d6">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: error.description}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd" doc:id="b68edbe1-366e-4e1a-96f1-aa8f34c0ef03">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus"><![CDATA[404]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+                <ee:transform xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Method not allowed"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">405</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_ACCEPTABLE" enableNotifications="true" logException="true">
+                <ee:transform xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd" doc:id="d1f1111e-e448-43fc-908e-513f1c85a871">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Not acceptable"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus"><![CDATA[406]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+                <ee:transform xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Unsupported media type"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">415</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_IMPLEMENTED" enableNotifications="true" logException="true">
+                <ee:transform xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd" doc:id="2348bfa2-5acf-4360-96ca-4ef9fadd25ee">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Not Implemented"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus"><![CDATA[501]]></ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="a0efe925-314f-4411-85fd-bd8d6ed85813" type="HTTP:UNAUTHORIZED">
+				<set-variable value="401" doc:name="Set Variable" doc:id="9508bb81-7ab3-4e6d-bed4-db3d818bbee3" variableName="http.status"/>
+				<ee:transform doc:name="Transform Message" doc:id="5042a19f-273b-4a0f-bac8-d3a302c692b2" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{message: error.description}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[501]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="cloudhub-app-info-api-console" initialState="started">
+        <http:listener config-ref="cloudhub-app-info-api-httpListenerConfig" path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]" />
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="cloudhub-app-info-api-config" />
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd  http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+    <flow name="get:\utilization\org\(orgId)\cpuUtilization:cloudhub-app-info-api-config">
+        <ee:transform doc:name="Save requestParams to variable" doc:id="9a38ab1e-53c4-4bc7-b7dc-a63483602ee1">
+            <ee:message />
+            <ee:variables>
+                <ee:set-variable variableName="requestParams"><![CDATA[%dw 2.0
+output application/java
+---
+{
+	orgId: attributes.uriParams.orgId,
+	username: attributes.headers.username,
+	password: attributes.headers.password,
+	email: attributes.headers.email,
+	maxRunningCapacity: attributes.queryParams.maxCPUUtilization,
+	startDateTime: attributes.queryParams.startDateTime,
+	endDateTime: attributes.queryParams.endDateTime,
+	orgName: "Root"
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+		<flow-ref doc:name="call login" doc:id="a18ed730-5346-4a2a-8c46-31fdc1b1537c" name="login-subflow" target="login"/>
+		<choice doc:name="Choice" doc:id="0f0d7180-2fe4-4bae-a856-181139513f69" >
+			<when expression="#[daysBetween(vars.requestParams.startDateTime,vars.requestParams.endDateTime) &lt;= 7]">
+				<os:retrieve doc:name="Retrieve the objectStore lock" doc:id="4f8c5226-867c-4543-a113-6fbbcf52d1d6" key="lock" objectStore="lock" target="osLock">
+					<os:default-value ><![CDATA[#[false]]]></os:default-value>
+				</os:retrieve>
+				<choice doc:name="Choice" doc:id="5ecddd5b-acc1-43a3-bdfc-42a58d0ef729" >
+					<when expression="vars.osLock == false">
+						<os:store doc:name="lock the objectStore to prevent concurrent use" doc:id="0db43b07-f917-497e-ba2b-6d6512e5ea67" key="lock" objectStore="lock">
+							<os:value ><![CDATA[#[true]]]></os:value>
+						</os:store>
+						<async doc:name="Async" doc:id="ca873fc1-5462-4d70-9c1d-f0892000ab34">
+			<flow-ref doc:name="Call processOrg" doc:id="f8f96d23-7ada-462a-9a76-9bf84f4de867" name="processRootOrg" />
+		</async>
+						<ee:transform doc:name="Transform Message" doc:id="4afdfd46-2566-4b74-9bdb-f61500d50eea">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	message: "You will receive an email @ " ++ vars.requestParams.email ++ " with the results shortly."
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					</when>
+					<otherwise >
+						<raise-error doc:name="Raise in use error" doc:id="61ba20a0-9ed3-42b5-bfa3-5d2830234af9" type="APP:ANALYSIS_IN_PROCESS_TRY_LATER" description="The CloudHub Utilization App is currently in use. Try again later"/>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise >
+				<raise-error doc:name="Raise timeframe too long error" doc:id="bd55442d-bc4b-44c4-a545-df64e3c67ca6" type="APP: DURATION_TOO_LONG" description='#["EndDateTime (" ++ vars.requestParams.endDateTime ++ ") must be within 7 days of StartDateTime(" ++ vars.requestParams.startDateTime ++ ")"]'/>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="5cf1c181-1118-4540-a4a2-b6b7598395aa" >
+				<ee:transform doc:name="Transform Message" doc:id="8a33e5da-6dab-4a80-88b1-08c18e62adc1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	message: error.description
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</on-error-continue>
+		</error-handler>
+    </flow>
+	<flow name="get:\objectStore\all:cloudhub-app-info-api-config">
+        <os:retrieve-all doc:name="Retrieve all" doc:id="d842338b-a869-4859-96d7-fac77a12596d" objectStore="workerStats"/>
+		<ee:transform doc:name="Transform Message" doc:id="4ec9062e-fd77-49de-8b8a-4684303fe6ca" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" message="get:\objectStore\all:cloudhub-app-info-api-config" />
+    </flow>
+</mule>

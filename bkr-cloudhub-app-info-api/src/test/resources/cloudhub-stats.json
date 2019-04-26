@@ -1,0 +1,22 @@
+{
+	"organization": "bkr",
+	"bgTree": "-bkr-bg1-bg1.1",
+	"environment": "Design",
+	"application": "bkr-app-name",
+	"appLastUpdateTime": "2019-04-05T12:13:14.001Z",
+	"appStatus": "STARTED",
+	"muleVersion": "3.9.1",
+	"workerCount": "2",
+	"workerId": "i-1212371231",
+	"workerIpAddress": "10.2.1.23",
+	"workerSize": "0.1",
+	"maxCPUPct": "0",
+	"maxMemoryUsedPct": "0",
+	"maxMemoryTotalUsed": "0",
+	"maxMemoryTotalMax": "0",
+	"maxNetworkIn": "0",
+	"maxNetworkOut": "0",
+	"maxDiskReadBytes": "0",
+	"maxDiskWriteBytes": "0",
+	"error": "some message"
+ }

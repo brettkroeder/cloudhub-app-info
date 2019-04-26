@@ -1,0 +1,18 @@
+https:
+  port: "8082"
+  tls:
+    path: server.jks
+    keyPassword: Mule1379
+    password: Mule1379
+  reconnect:
+    frequency: "15000"
+    attempts: "4"
+
+api:
+  id: "15683481"
+
+smtp:
+  hostname: smtp.gmail.com
+  port: "465"
+  username: muley.brett@gmail.com
+  password: wkfxbknhdolxtyts

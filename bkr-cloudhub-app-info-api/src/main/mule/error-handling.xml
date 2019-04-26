@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="error-handler-subflow" doc:id="01e88b01-60a0-412c-b103-319814ee480e" >
+		<choice doc:name="Choice" doc:id="c52fd7f0-abcf-4371-b4bb-08a7bf387da1" >
+			<when expression='#[vars.httpStatus == "429"]'>
+				<logger level="INFO" doc:name="Logger" doc:id="a073f7ea-b1a1-42e9-93d0-24b0ab345910" message='#[output text/plain --- vars.parentOrgName ++ "***** RATE LIMIT ERROR ***** Retry=" ++ vars.httpStatus ++ " @" ++ vars.breadcrumb! ++ " ERROR: " ++ error.description!]' />
+				<set-variable value="#[error.errorMessage.attributes.headers.'x-ratelimit-reset']" doc:name="Set sleepTime" doc:id="ee47e7ee-4165-42aa-aab6-b32919be4766" variableName="sleepTime" />
+				<scripting:execute engine="groovy" doc:name="Sleep for x-ratelimit-reset" doc:id="5981bedd-0d40-4950-94e2-64d77338a667">
+			<scripting:code>sleep( sleepTime )</scripting:code>
+			<scripting:parameters><![CDATA[#[{ sleepTime: vars.sleepTime }]]]></scripting:parameters>
+		</scripting:execute>
+				<logger level="INFO" doc:name="Logger" doc:id="15d086d5-4fac-4454-b24a-5fbea7b59883" message='#[output text/plain --- "***** RETRY ***** " ++ vars.httpStatus ++ " @" ++ vars.breadcrumb! ++ " ERROR: " ++ error.description!]'/>
+				<choice doc:name="Choice" doc:id="28932a54-9bf9-4d20-8ed2-023affeca330" >
+					<when expression='#[vars.objectType == "bg"]'>
+						<flow-ref doc:name="Call bg API" doc:id="3e375288-784f-4780-a1e2-29918c0cd5c7" name="http-call-bg" target="getbg"/>
+					</when>
+					<when expression='#[vars.objectType == "environment"]'>
+						<flow-ref doc:name="Call Environment API" doc:id="5c94b1b7-37af-44e8-a33e-4f7045d0863f" name="http-call-environment" target="getEnvironment"/>
+					</when>
+					<when expression='#[vars.objectType == "application"]'>
+						<flow-ref doc:name="Call Application API" doc:id="8f90c496-025e-4f41-af5b-4c6b1165b525" name="http-call-application" target="getApplication"/>
+					</when>
+					<when expression='#[vars.objectType == "dashboardStats"]'>
+						<flow-ref doc:name="Call Dadshboard Stats API" doc:id="951784db-8b75-4b69-a6db-616753d84ffa" name="http-call-dashboardStats" target="getDashboardStats"/>
+					</when>
+					<otherwise >
+						<logger level="INFO" doc:name="Logger" doc:id="d2e4bf0c-fc17-4559-a90c-2fc21e789ed4" message="XXXXXX   O O P S ! ! ! !   XXXXXX"/>
+					</otherwise>
+				</choice>
+			</when>
+			<when expression='#[vars.httpStatus == "401"]'>
+				<flow-ref doc:name="log back in" doc:id="2cfc1540-f8db-4787-8a18-803bc381151b" name="login-subflow" />
+				<logger level="INFO" doc:name="Logger" doc:id="f1e5f19d-9592-46df-9480-7268999159b1" message='#[output text/plain --- "***** LOGIN ERROR ***** @" ++ vars.breadcrumb! default "XXX"]' />
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="5573e7ac-a9f0-444a-91ce-05498099798d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	organization: vars.parentOrgName,
+	bgTree: vars.breadcrumb,
+	environment: vars.currentEnv.name default "",
+	application: vars.currentApp.domain default "",
+	appLastUpdateTime: null,
+	appStatus: null,
+	workerCount: null,
+	workerSize: null,
+	muleVersion: null,
+	workerId: null,
+	workerIpAddress: null,
+	maxCPUPct: null,
+	maxMemoryUsedPct: null,
+	maxMemoryTotalUsed: null,
+	maxMemoryTotalMax: null,
+	maxDiskReadBytes: null,
+	maxDiskWriteBytes: null,
+	maxNetworkIn: null,
+	maxNetworkOut: null,	error: error.description
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<os:store doc:name="Store error" doc:id="b5a12f5e-5043-4cf0-969f-bac42496339c" key="#[vars.bgTree]" objectStore="workerStats" />
+				<logger level="INFO" doc:name="Logger" doc:id="208cfb0e-5317-49c8-8784-fc21864f75df" message='#[output text/plain --- "***** ERROR ***** processing " ++ vars.breadcrumb! ++ " " ++ error.description!]' />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

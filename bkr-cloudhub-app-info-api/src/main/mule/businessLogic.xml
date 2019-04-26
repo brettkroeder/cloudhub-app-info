@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+	xmlns:email="http://www.mulesoft.org/schema/mule/email"
+	xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd 
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd 
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd">
+	<email:smtp-config name="Email_SMTP" doc:name="Email SMTP" doc:id="5424f3c2-85e4-4c07-9de9-813258f45dba">
+        <email:smtps-connection host="${smtp.hostname}" port="${smtp.port}" user="${smtp.username}" password="${smtp.password}" connectionTimeout="15" readTimeout="15" writeTimeout="15">
+			<reconnection >
+				<reconnect />
+			</reconnection>
+			<tls:context >
+				<tls:key-store path="${https.tls.path}" keyPassword="${https.tls.keyPassword}" password="${https.tls.password}" />
+			</tls:context>
+		</email:smtps-connection>
+    </email:smtp-config>
+	<os:object-store name="workerStats" doc:name="Object store" doc:id="15e69260-bace-4bea-93e9-4b3e006c7009" persistent="false" />
+	<api-gateway:autodiscovery apiId="15683481" doc:name="API Autodiscovery" doc:id="078e47e6-4d1e-4ce9-96b7-727035ff1a45" flowRef="cloudhub-app-info-api-main" />
+	<flow name="processRootOrg">
+        <logger message="Root Org: #[vars.requestParams.orgName!]" level="INFO" doc:name="Logger"/>
+		<os:clear doc:name="Clear" doc:id="257dd875-6baa-462a-a272-a570310a6c7b" objectStore="workerStats"/>
+		<until-successful maxRetries="5" doc:name="Until Successful" doc:id="77191a40-fea5-4cf1-bacc-9e6aab9905e4" >
+		<http:request method="GET" doc:name="Get org hierarchy" doc:id="e179741b-207c-4443-b4e8-5ceaa9a81d68" path="/api/organizations/{orgId}/hierarchy" config-ref="AnypointPlatformAPIs" target="orgHierarchy">
+			<reconnect frequency="${https.reconnect.frequency}" count="${https.reconnect.attempts}"/>
+			<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Authorization" : "bearer " ++ vars.login.access_token
+}]]]></http:headers>
+			<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"orgId" : vars.requestParams.orgId
+}]]]></http:uri-params>
+		</http:request>
+		</until-successful>
+		<set-variable value="#[vars.orgHierarchy.name!]" doc:name="Set parentOrgName" doc:id="13acfcdf-20f2-4cc2-b204-67b2d80a125b" variableName="parentOrgName" />
+		<set-variable value="#[vars.parentOrgName]" doc:name="Initialize breadcrumb" doc:id="a33cf84a-f10f-48af-b41f-5344b1a38745" variableName="breadcrumb"/>
+		<set-variable value='#[""]' doc:name="Initialize bgTree" doc:id="207180f4-b907-4109-84b6-ba751ad196a2" variableName="bgTree"/>
+		<flow-ref doc:name="Process environments for root BG" doc:id="366e1381-8f48-40cc-be8a-32f6babc5164" name="processEnvironmentsForBG"/>
+		<flow-ref doc:name="call process org hierarchy" doc:id="73a0efc8-bb5d-47dd-960e-e9bdc3560fd7" name="processOrgHierarchy"/>
+		<os:retrieve-all doc:name="Retrieve all workerStats" doc:id="d538feac-cff4-4d72-84f5-fe03019d5859" objectStore="workerStats"/>
+		<os:clear doc:name="Clear workerStats" doc:id="3361677b-0cb1-4ed1-8792-6c18e3332b39" />
+		<os:clear doc:name="Clear lock" doc:id="165c260a-aa74-4eef-bf1f-dc7e3ad923e7" objectStore="lock"/>
+		<ee:transform doc:name="Transform Message" doc:id="062a75d2-a353-48d1-b330-8a40da1e31c5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv
+import * from dw::core::Objects
+
+fun toFlattenArray(collection: Array<{}>) = 
+    collection flatMap ((item, index) -> valueSet(item))
+
+---
+payload match {
+    case collection is Array -> toFlattenArray(collection)
+    case obj is Object -> toFlattenArray([obj])
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="7a76028c-31b9-4b02-adbc-25dc83eb72e1" message="FINISHED processing the org"/>
+		<email:send doc:name="Send email" doc:id="36edb713-88a6-4bfd-8fcc-d7c8db669094" config-ref="Email_SMTP" subject='#[output text/plain --- "CPU Utilization information for " ++ sizeOf(payload) ++ " apps in " ++ vars.parentOrgName! ++ " organization"]'>
+			<email:to-addresses >
+				<email:to-address value="#[vars.requestParams.email]" />
+			</email:to-addresses>
+			<email:body contentType="text/plain" >
+				<email:content ><![CDATA[#[output text/plain --- "The attached file contains your application statistics for the " ++ vars.parentOrgName! default "" ++ ". Save the file and open it using your favorite analytics tool!"]]]></email:content>
+			</email:body>
+			<email:attachments ><![CDATA[#[{
+   'CloudHub-App-Stats.csv' : payload
+}]]]></email:attachments>
+		</email:send>
+		<logger level="INFO" doc:name="Logger" doc:id="9d7a7946-9753-4e48-87bb-8e96bc95ad5b" message="email sent to #[vars.requestParams.email]"/>
+    </flow>
+    <flow name="processOrgHierarchy">
+		<set-variable value="#[vars.parentOrgName]" doc:name="Set parentOrgName" doc:id="2acc236c-aebf-41a8-b8f8-5774ece9f358" variableName="parentOrgName" />
+		<foreach doc:name="For Each subOrg" doc:id="de4abe96-b185-4238-befb-e8478ba44e49" collection="vars.orgHierarchy.subOrganizations">
+			<set-variable variableName="breadcrumb" value='#[output application/java --- vars.parentOrgName! default "XXX" ++ "-" ++ payload.name!]' doc:name="set breadcrumb" doc:id="d5fd2ad5-6339-4ce2-9deb-45db707de7a8"/>
+			<set-variable value='#[output application/java --- vars.bgTree! default "XXX" ++ "-" ++ payload.name!]' doc:name="Set bgTree" doc:id="9bbeb3c5-96aa-499d-b92c-2f183d61474b" variableName="bgTree"/>
+			<logger message="#[vars.breadcrumb!]" level="INFO" doc:name="Log breadcrumb" />
+			<try doc:name="Try" doc:id="ef08923d-3c98-42c5-99dc-a9a41a5fd8df" >
+				<http:request method="GET" doc:name="Get org hierarchy" doc:id="61813205-642a-497f-a261-26a9ef73f4c1" config-ref="AnypointPlatformAPIs" path="/api/organizations/{orgId}/hierarchy" target="orgHierarchy">
+				<reconnect frequency="${https.reconnect.frequency}" count="${https.reconnect.attempts}" />
+					<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : "bearer " ++ vars.login.access_token
+}]]]></http:headers>
+				<http:uri-params><![CDATA[#[output application/java
+---
+{
+	"orgId" : payload.id
+}]]]></http:uri-params>
+			</http:request>
+				<flow-ref doc:name="Get environments for BG" doc:id="4bba2859-1696-45b8-a627-5b142dec736b" name="processEnvironmentsForBG"/>
+				<choice doc:name="Choice">
+            <when expression="payload.subOrganizations != null">
+						<set-variable value="#[payload]" doc:name="Set currentSubOrg" doc:id="c50c3c27-9a90-4794-b466-c49ba2e633d6" variableName="currentSubOrg" />
+						<flow-ref doc:name="recurse the org hierarchy" doc:id="205af80e-4ba9-41a7-88f1-8ec12d0ce94d" name="processOrgHierarchy"/>
+            </when>
+			<otherwise>
+                <set-variable value="#[vars.parentOrgName]" doc:name="Restore parent org name" doc:id="7fb8d303-de17-4c4c-bb67-abb143f92566" variableName="breadcrumb"/>
+						<logger message="#[vars.breadcrumb!] PROCESSED" level="INFO" doc:name="Logger" />
+            </otherwise>
+        </choice>
+				<error-handler >
+					<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="7bc9e343-97a4-42a1-8e69-3185f0121df9" >
+						<ee:transform doc:name="Transform Message" doc:id="6bf92e05-179d-4a29-9f00-f5f42272d4ea" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	organization: vars.parentOrgName,
+	bgTree: vars.breadcrumb,
+	environment: null,
+	application: null,
+	appLastUpdateTime: null,
+	appStatus: null,
+	workerCount: null,
+	workerSize: null,
+	muleVersion: null,
+	workerId: null,
+	workerIpAddress: null,
+	maxCPUPct: null,
+	maxMemoryUsedPct: null,
+	maxMemoryTotalUsed: null,
+	maxMemoryTotalMax: null,
+	maxDiskReadBytes: null,
+	maxDiskWriteBytes: null,
+	maxNetworkIn: null,
+	maxNetworkOut: null,	error: error.description
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<os:store doc:name="Store error" doc:id="4d2493a5-c33f-4f21-98f1-42241ea26822" key="#[vars.bgTree]" objectStore="workerStats"/>
+						<logger level="INFO" doc:name="Logger" doc:id="b9560627-6505-4186-b1f8-736138b59396" message='#[output text/plain --- vars.parentOrgName ++ "***** ERROR ***** processing " ++ vars.breadcrumb! ++ " " ++ error.description!]'/>
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</foreach>
+    </flow>
+	<flow name="processEnvironmentsForBG" doc:id="0bf147ec-d2d3-430e-b8f8-4a82185eb4a0" >
+		<flow-ref doc:name="Call Environment API" doc:id="d6457866-9485-4367-8eed-559b46b176f5" name="http-call-environment" target="environments"/>
+		<set-variable value="#[vars.breadcrumb!]" doc:name="Set starting breadcrumb" doc:id="fb264676-1eca-46c8-979e-60332bbff724" variableName="envStartBreadcrumb"/>
+		<foreach doc:name="For Each environment" doc:id="4d18873a-3b98-4b43-9cdf-e90225409bfb" collection="vars.environments.data">
+			<set-variable value='#[output application/java --- vars.breadcrumb! default "XXX" ++ "-" ++ payload.name!]' doc:name="Set breadcrumb" doc:id="8442d634-8553-4e8c-9e89-b2c237ffb7e3" variableName="breadcrumb"/>
+			<logger level="INFO" doc:name="Log breadcrumb" doc:id="02f8b409-9381-40b3-9366-287983eda053" message='#[vars.breadcrumb!]' />
+			<set-variable value="#[payload]" doc:name="Set currentEnv" doc:id="34e0128a-1b52-487a-b74d-46794eebe6f2" variableName="currentEnv" />
+			<flow-ref doc:name="process apps in environment" doc:id="a3f12d2d-5f92-44a0-a225-b64bac8e909a" name="processAppsInEnv"/>
+			<set-variable value="#[vars.envStartBreadcrumb]" doc:name="restore breadcrumb" doc:id="adeb8864-48fb-4b25-9978-60e084c64e78" variableName="breadcrumb" />
+		</foreach>
+		<logger level="INFO" doc:name="Logger" doc:id="8d4471ab-1446-4693-9998-2e1ebdaa97f3" message='#[vars.breadcrumb! ++ " ENVs processed"]'/>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="50ab81c0-c101-46fb-af69-e2cf39142ac9" >
+				<ee:transform doc:name="Transform Message" doc:id="0104bec7-5090-48ae-900a-6055c0f055c7" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	organization: vars.parentOrgName,
+	bgTree: vars.breadcrumb,
+	environment: null,
+	application: null,
+	appLastUpdateTime: null,
+	appStatus: null,
+	workerCount: null,
+	workerSize: null,
+	muleVersion: null,
+	workerId: null,
+	workerIpAddress: null,
+	maxCPUPct: null,
+	maxMemoryUsedPct: null,
+	maxMemoryTotalUsed: null,
+	maxMemoryTotalMax: null,
+	maxDiskReadBytes: null,
+	maxDiskWriteBytes: null,
+	maxNetworkIn: null,
+	maxNetworkOut: null,	error: error.description
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<os:store doc:name="Store error" doc:id="97086fac-8fb2-4b3c-ab4f-71b09c52a434" key="#[vars.breadcrumb]" objectStore="workerStats"/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="processAppsInEnv" doc:id="dcf03b0f-2aa2-4fad-b0a6-3b9fa73e280c" >
+		<flow-ref doc:name="Call Applications API" doc:id="73e0b78f-7e2c-44cf-971a-61fc6b41dae9" name="http-call-application" target="applications"/>
+		<set-variable value="#[vars.breadcrumb]" doc:name="Set Variable" doc:id="044f0096-4b83-42fb-a3f4-6b0b64dba7dc" variableName="startingAppsBreadcrumb"/>
+		<foreach doc:name="For Each application in the environment" doc:id="349305db-6126-4bb2-9af6-9222f777337e" collection="vars.applications">
+			<set-variable value='#[output application/java --- vars.breadcrumb! default "XXX" ++ "-" ++ payload.domain!]' doc:name="Set breadcrumb" doc:id="b3feda8b-dee4-413b-8a79-0e8c3428e517" variableName="breadcrumb" />
+			<logger level="INFO" doc:name="Log breadcrumb" doc:id="115cc42d-5406-4437-844d-ef2863865cbe" message='#[vars.breadcrumb!]' />
+			<set-variable value="#[payload]" doc:name="Set currentApp" doc:id="688f06aa-b37e-4a4f-8a48-d22eb4398b1e" variableName="currentApp" />
+			<flow-ref doc:name="call process dashboard stats" doc:id="05d475a5-bfef-4fa5-bf9e-7d7be8a9e77f" name="processDashboardStats"/>
+			<set-variable value="#[vars.startingAppsBreadcrumb]" doc:name="Restore starting breadcrumb" doc:id="abc09137-ff68-4c36-bf25-fa9a0fc6f6b4" variableName="breadcrumb" />
+		</foreach>
+		<logger level="INFO" doc:name="Logger" doc:id="37ed57c6-a33d-4fc4-b95d-6fa291ccefd8" message='#[vars.breadcrumb! ++ " APPS processed"]' />
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="70adda22-963d-4d20-8caa-cba7378e2f04" >
+				<ee:transform doc:name="Transform Message" doc:id="fb0fcd04-b6e5-46eb-96a0-60b80e6e85ac" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	organization: vars.parentOrgName,
+	bgTree: vars.breadcrumb,
+	environment: vars.currentEnv.name,
+	application: null,
+	appLastUpdateTime: null,
+	appStatus: null,
+	workerCount: null,
+	workerSize: null,
+	muleVersion: null,
+	workerId: null,
+	workerIpAddress: null,
+	maxCPUPct: null,
+	maxMemoryUsedPct: null,
+	maxMemoryTotalUsed: null,
+	maxMemoryTotalMax: null,
+	maxDiskReadBytes: null,
+	maxDiskWriteBytes: null,
+	maxNetworkIn: null,
+	maxNetworkOut: null,
+	error: error.description
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<os:store doc:name="Store error" doc:id="bd4925a1-b2df-478b-a426-88b8537a2b68" key="#[vars.breadcrumb]" objectStore="workerStats"/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<flow name="processDashboardStats" doc:id="a39bfb5c-b4d4-460a-be73-c8108004fe3c" >
+		<logger level="INFO" doc:name="Logger" doc:id="44a4dfaa-08bf-4d8c-982b-a579f9199935" message='#[output text/plain --- "bearer(" ++ vars.login.access_token default "X" ++ ") ENV(" ++ vars.currentEnv.id default "X" ++ ") domain(" ++ payload.domain default "X" ++ ") startDateTime(" ++ vars.requestParams.startDateTime default "X" ++ " endDateTime(" ++ vars.requestParams.endDateTime default "X"]'/>
+		<flow-ref doc:name="Call dashboardStats API" doc:id="3a61f98b-f880-4004-aa2c-f1201b3beee5" name="http-call-dashboardStats" target="dashboardStats"/>
+		<set-variable value="#[vars.breadcrumb]" doc:name="Set Variable" doc:id="52df451b-4f28-4e48-8523-5ce2f3f06074" variableName="startingDashboardStatsBreadcrumb"/>
+		<foreach doc:name="For Each worker" doc:id="db8166f6-2914-4e53-8c76-e928b15a336c" collection="vars.dashboardStats.workerStatistics">
+			<set-variable value='#[output application/java --- vars.breadcrumb! default "XXX" ++ "-" ++ payload.id!]' doc:name="Set breadcrumb" doc:id="6ea198ac-fc5a-4dc5-8eb2-8bae9769e98f" variableName="breadcrumb" />
+			<logger level="INFO" doc:name="Logger breadcrumg" doc:id="a4409c6c-36dd-4592-b3e6-5368b013dc5a" message='#[vars.breadcrumb!]' />
+			<set-variable value="#[payload]" doc:name="Set currentApp" doc:id="b3bb961b-63b1-48a5-b0c1-f46110919671" variableName="currentWorker" />
+			<ee:transform doc:name="Transform dashboard stats" doc:id="2028827a-1cc3-4c99-9367-185d843a11c0" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="workerDashboardStats" ><![CDATA[%dw 2.0
+import * from dw::core::Strings
+output application/json
+---
+payload.statistics mapObject ((value, key) -> {
+   ("max" ++ ((capitalize ((key) as String)) replace " " with "")) : (value match {
+        case is Object ->  max (value pluck $)
+        else -> value
+   })
+})]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<ee:transform doc:name="Transform Message" doc:id="e4738285-974c-4447-aa1e-e2e9f12ca882" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	organization: vars.parentOrgName,
+	bgTree: vars.orgHierarchy.name,
+	environment: vars.currentEnv.name,
+	application: vars.currentApp.domain,
+	appLastUpdateTime: vars.currentApp.lastUpdateTime,
+	appStatus: vars.currentApp.status,
+	workerCount: vars.currentApp.workers.amount,
+	workerSize: vars.currentApp.workers.'type'.weight,
+	muleVersion: vars.currentApp.muleVersion.version,
+	workerId: payload.id,
+	workerIpAddress: payload.ipAddress,
+	maxCPUPct: vars.workerDashboardStats.maxCpu,
+	maxMemoryUsedPct: vars.workerDashboardStats.maxMemoryPercentageUsed,
+	maxMemoryTotalUsed: vars.workerDashboardStats.maxMemoryTotalUsed,
+	maxMemoryTotalMax: vars.workerDashboardStats.maxMemoryTotalMax,
+	maxDiskReadBytes: vars.workerDashboardStats.maxDisReadBytes,
+	maxDiskWriteBytes: vars.workerDashboardStats.maxDiskWriteBytes,
+	maxNetworkIn: vars.workerDashboardStats.maxNetworkIn,
+	maxNetworkOut: vars.workerDashboardStats.maxNetworkOut
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<os:store doc:name="Store worker stats" doc:id="b14886b6-e9fe-446f-8f59-023875a1d35b" key='#[vars.orgHierarchy.name ++ "-" ++ vars.currentEnv.name ++ "-" ++ vars.currentApp.domain ++ "-" ++ vars.currentWorker.id]' objectStore="workerStats"/>
+			<set-variable value="#[vars.startingDashboardStatsBreadcrumb]" doc:name="Restore starting breadcrumb" doc:id="8f8291fb-57ae-459f-bf7c-bc790ebbef57" variableName="breadcrumb"/>
+			<logger level="INFO" doc:name="Logger" doc:id="86965cd3-d9b5-45ff-b1d2-1cf0f57874e7" message='#[vars.breadcrumb ++ " worker info saved to objectstore"]'/>
+		</foreach>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="9e8a1d98-f84d-4df3-8a66-b177cdd240d8" >
+				<ee:transform doc:name="Transform Message" doc:id="cea95708-eeba-4ecc-8961-e26a609b2207" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	organization: vars.parentOrgName,
+	bgTree: vars.breadcrumb,
+	environment: vars.currentEnv.name,
+	application: vars.currentApp.domain,
+	appLastUpdateTime: null,
+	appStatus: null,
+	workerCount: null,
+	workerSize: null,
+	muleVersion: null,
+	workerId: null,
+	workerIpAddress: null,
+	maxCPUPct: null,
+	maxMemoryUsedPct: null,
+	maxMemoryTotalUsed: null,
+	maxMemoryTotalMax: null,
+	maxDiskReadBytes: null,
+	maxDiskWriteBytes: null,
+	maxNetworkIn: null,
+	maxNetworkOut: null,
+	error: error.description
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<os:store doc:name="Store error" doc:id="f37235cd-d172-4129-a6ad-7b0b2db144ba" key='#[vars.breadcrumb! ++ "-" ++ vars.currentApp.domain]' objectStore="workerStats"/>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+</mule>
